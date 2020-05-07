@@ -161,70 +161,75 @@ class MMU
         return 0 != memcmp(exRam, buf, 0x2000);
     }
 
-    void* saveState(size_t* size)
+    size_t getStateSize()
     {
-        *size = 4;
-        *size += 3;
-        *size += sizeof(ram);
-        *size += 3;
-        *size += sizeof(reg);
+        size_t size = 4;
+        size += 3;
+        size += sizeof(ram);
+        size += 3;
+        size += sizeof(reg);
         if (isUsingExRam()) {
-            *size += 3;
-            *size += sizeof(exRam);
+            size += 3;
+            size += sizeof(exRam);
         }
         if (romData.hasButtryBackup) {
-            *size += 3;
-            *size += sizeof(sram);
+            size += 3;
+            size += sizeof(sram);
         }
-        char* result = (char*)malloc(*size);
-        if (!result) {
-            *size = 0;
-            return NULL;
-        }
+        return size;
+    }
 
-        memcpy(result, "MMU", 4);
-        int ptr = 4;
+    void saveState(void* data)
+    {
+        char* cp = (char*)data;
+        memcpy(cp, "MM", 2);
+        int ptr = 2;
         unsigned short ds;
+        ds = (unsigned short)getStateSize();
+        cp[ptr++] = (ds & 0xFF00) >> 8;
+        cp[ptr++] = ds & 0xFF;
 
         ds = (unsigned short)sizeof(ram);
-        result[ptr++] = 'W';
-        result[ptr++] = (ds & 0xFF00) >> 8;
-        result[ptr++] = ds & 0xFF;
-        memcpy(&result[ptr], ram, ds);
+        cp[ptr++] = 'W';
+        cp[ptr++] = (ds & 0xFF00) >> 8;
+        cp[ptr++] = ds & 0xFF;
+        memcpy(&cp[ptr], ram, ds);
         ptr += ds;
 
         ds = (unsigned short)sizeof(reg);
-        result[ptr++] = 'R';
-        result[ptr++] = (ds & 0xFF00) >> 8;
-        result[ptr++] = ds & 0xFF;
-        memcpy(&result[ptr], &reg, ds);
+        cp[ptr++] = 'R';
+        cp[ptr++] = (ds & 0xFF00) >> 8;
+        cp[ptr++] = ds & 0xFF;
+        memcpy(&cp[ptr], &reg, ds);
         ptr += ds;
 
         if (isUsingExRam()) {
             ds = (unsigned short)sizeof(exRam);
-            result[ptr++] = 'E';
-            result[ptr++] = (ds & 0xFF00) >> 8;
-            result[ptr++] = ds & 0xFF;
-            memcpy(&result[ptr], exRam, ds);
+            cp[ptr++] = 'E';
+            cp[ptr++] = (ds & 0xFF00) >> 8;
+            cp[ptr++] = ds & 0xFF;
+            memcpy(&cp[ptr], exRam, ds);
             ptr += ds;
         }
 
         if (romData.hasButtryBackup) {
             ds = (unsigned short)sizeof(sram);
-            result[ptr++] = 'S';
-            result[ptr++] = (ds & 0xFF00) >> 8;
-            result[ptr++] = ds & 0xFF;
-            memcpy(&result[ptr], sram, ds);
+            cp[ptr++] = 'S';
+            cp[ptr++] = (ds & 0xFF00) >> 8;
+            cp[ptr++] = ds & 0xFF;
+            memcpy(&cp[ptr], sram, ds);
             ptr += ds;
         }
-        return size;
     }
 
-    bool loadState(void* data, size_t size)
+    size_t loadState(void* data)
     {
         _clearRAM();
         char* cp = (char*)data;
-        if (memcmp(cp, "MMU", 4)) return false;
+        if (memcmp(cp, "MM", 2)) return 0;
+        size_t size = cp[2];
+        size *= 256;
+        size += cp[3];
         int ptr = 4;
         while (ptr < size) {
             char t = cp[ptr++];
@@ -238,7 +243,7 @@ class MMU
             }
             ptr += ds;
         }
-        return true;
+        return size;
     }
 };
 
