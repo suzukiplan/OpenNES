@@ -1,8 +1,8 @@
+// SUZUKI PLAN - OpenNES (GPLv3)
 #ifndef INCLUDE_OPENNES_H
 #define INCLUDE_OPENNES_H
 #include "M6502/m6502.hpp"
 #include "apu.hpp"
-// SUZUKI PLAN - OpenNES (GPLv3)
 #include "mmu.hpp"
 #include "ppu.hpp"
 #include <stdio.h>

@@ -80,8 +80,7 @@ class MMU
     unsigned char readMemory(unsigned short addr)
     {
         unsigned char page = (addr & 0xFF00) >> 8;
-        if (page < 0x08) return ram[addr];                                                                // WRAM (2KB)
-        if (page < 0x20) return ram[addr & 0x7FF];                                                        // WRAM mirror
+        if (page < 0x20) return ram[addr & 0x7FF];                                                        // WRAM
         if (page < 0x40) return ppuRead(arg, 0x2000 + (addr & 0b111));                                    // PPU I/O
         if (addr < 0x4020) return apuRead(arg, addr);                                                     // APU I/O
         if (page < 0x60) return exRam[addr - 0x4000];                                                     // ExRAM
@@ -97,10 +96,8 @@ class MMU
     void writeMemory(unsigned short addr, unsigned char value)
     {
         unsigned char page = (addr & 0xFF00) >> 8;
-        if (page < 0x08) {
-            ram[addr] = value;
-        } else if (page < 0x20) {
-            ram[addr % 0x800] = value;
+        if (page < 0x20) {
+            ram[addr & 0x7FF] = value;
         } else if (page < 0x40) {
             ppuWrite(arg, 0x2000 + (addr & 0b111), value);
         } else if (addr < 0x4020) {
