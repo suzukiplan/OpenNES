@@ -29,9 +29,9 @@ OpenNES::OpenNES(bool isNTSC, ColorMode colorMode)
         OpenNES* nes = (OpenNES*)arg;
         // execute 3 PPU ticks
         // https://wiki.nesdev.com/w/index.php/PPU_frame_timing
-        nes->ppu->tick();
-        nes->ppu->tick();
-        nes->ppu->tick();
+        nes->ppu->tick(nes->cpu);
+        nes->ppu->tick(nes->cpu);
+        nes->ppu->tick(nes->cpu);
     });
 }
 
