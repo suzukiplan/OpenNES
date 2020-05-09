@@ -14,8 +14,8 @@ class MMU
         unsigned char* prgData;       // raw data of ROM
         unsigned char* chrData;       // raw data of CHR
         unsigned char trainer[0x200]; // 512-byte trainer at $7000-$71FF (stored before PRG data)
-        int prg;                      // number of program data (unit size: 8KB)
-        int chr;                      // number of character data (unit size: 8KB)
+        size_t prgSize;               // size of program data (unit size: byte)
+        size_t chrSize;               // size of character data (unit size: byte)
         int mapper;                   // number of mapper
         bool ignoreMirroring;         // Ignore mirroring control or above mirroring bit; instead provide four-screen VRAM
         bool hasTrainer;              // exist flag of 512-byte trainer at $7000-$71FF (stored before PRG data)
@@ -45,6 +45,13 @@ class MMU
         memset(exRam, 0, sizeof(exRam));
         memset(sram, 0, sizeof(sram));
         memset(&reg, 0, sizeof(reg));
+    }
+
+    size_t _getSizeValue(unsigned int exponent, unsigned int multiplier)
+    {
+        if (exponent > 60) exponent = 60;
+        multiplier = multiplier * 2 + 1;
+        return multiplier * (size_t)1 << exponent;
     }
 
   public:
@@ -85,12 +92,12 @@ class MMU
         if (addr < 0x4020) return apuRead(arg, addr);                                                     // APU I/O
         if (page < 0x60) return exRam[addr - 0x4000];                                                     // ExRAM
         if (romData.hasTrainer && 0x7000 <= addr && addr < 0x7200) return romData.trainer[addr - 0x7000]; // Trainer
-        if (romData.hasButtryBackup && page < 0x80) return sram[addr - 0x6000];                           // SRAM (Battery backup)
+        if (page < 0x80) return romData.hasButtryBackup ? sram[addr - 0x6000] : 0;                        // SRAM (Battery backup)
         // Read from ROM
-        int p = (addr & 0b11000000) >> 6;
-        int r = reg.bank[r];
-        unsigned char* g = r < romData.prg ? &romData.prgData[r * 0x2000] : NULL;
-        return g ? g[addr & 0x1FFF] : 0x00;
+        unsigned int ptr = reg.bank[(addr & 0b0110000000000000) >> 13];
+        ptr *= 0x2000;
+        ptr |= addr & 0x1FFF;
+        return ptr < romData.prgSize ? romData.prgData[ptr] : 0x00;
     }
 
     void writeMemory(unsigned short addr, unsigned char value)
@@ -118,17 +125,27 @@ class MMU
         if (size < 16) return false;
         if (0 != strncmp((char*)data, "NES", 3)) return false;
         if (data[3] != 0x1A) return false;
-        romData.prg = data[4] * 2;
-        romData.chr = data[5];
+        romData.isNes20 = (data[7] & 0b00001100) == 0b00001000 ? true : false;
+        if (romData.isNes20) {
+            if ((data[9] & 0x0F) == 0x0F) {
+                romData.prgSize = _getSizeValue(data[4] >> 2, data[4] & 0b11);
+                romData.chrSize = _getSizeValue(data[5] >> 2, data[5] & 0b11);
+            } else {
+                romData.prgSize = (((data[9] & 0x0F) << 8) | data[4]) * 0x4000;
+                romData.prgSize = (((data[9] & 0x0F) << 8) | data[5]) * 0x2000;
+            }
+        } else {
+            romData.prgSize = (data[4] ? data[4] : 256) * 0x4000;
+            romData.chrSize = data[5] * 0x2000;
+        }
         romData.mapper = (data[6] & 0b11110000) >> 4;
         romData.ignoreMirroring = data[6] & 0b00001000 ? true : false;
         romData.hasTrainer = data[6] & 0b00000100 ? true : false;
         romData.hasButtryBackup = data[6] & 0b00000010 ? true : false;
         romData.mirroring = data[6] & 0b000000001 ? true : false;
-        romData.prgData = (unsigned char*)malloc(romData.prg * 0x2000);
-        romData.chrData = (unsigned char*)malloc(romData.chr * 0x2000);
+        romData.prgData = (unsigned char*)malloc(romData.prgSize);
+        romData.chrData = (unsigned char*)malloc(romData.chrSize);
         romData.mapper += data[7] & 0b11110000;
-        romData.isNes20 = (data[7] & 0b00001100) == 0b00001000 ? true : false;
         romData.isPlayChoice10 = data[7] & 0b00000010 ? true : false;
         romData.isVS = data[7] & 0b00000001 ? true : false;
         int ptr = 16;
@@ -137,16 +154,27 @@ class MMU
             memcpy(romData.trainer, &data[ptr], 512);
             ptr += 512;
         }
-        if (size < ptr + romData.prg * 0x2000 + romData.chr * 0x2000) return false;
-        if (NULL == (romData.prgData = (unsigned char*)malloc(romData.prg * 0x2000))) return false;
-        memcpy(romData.prgData, &data[ptr], romData.prg * 0x2000);
-        reg.bank[0] = 0;
-        reg.bank[1] = 1;
-        reg.bank[2] = 2;
-        reg.bank[3] = 3;
-        ptr += romData.prg * 0x2000;
-        if (NULL == (romData.chrData = (unsigned char*)malloc(romData.chr * 0x2000))) return false;
-        memcpy(romData.chrData, &data[ptr], romData.chr * 0x2000);
+        if (size < ptr + romData.prgSize + romData.chrSize) return false;
+        if (NULL == (romData.prgData = (unsigned char*)malloc(romData.prgSize))) return false;
+        memcpy(romData.prgData, &data[ptr], romData.prgSize);
+        if (0x8000 <= romData.prgSize) {
+            reg.bank[0] = 0;
+            reg.bank[1] = 1;
+            reg.bank[2] = 2;
+            reg.bank[3] = 3;
+        } else {
+            reg.bank[0] = 0;
+            reg.bank[1] = 1;
+            reg.bank[2] = 0;
+            reg.bank[3] = 1;
+        }
+        ptr += romData.prgSize;
+        if (0 < romData.chrSize) {
+            if (NULL == (romData.chrData = (unsigned char*)malloc(romData.chrSize))) return false;
+            memcpy(romData.chrData, &data[ptr], romData.chrSize);
+        } else {
+            romData.chrData = NULL;
+        }
         // do not support play choise 10
         return true;
     }

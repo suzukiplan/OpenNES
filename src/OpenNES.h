@@ -35,8 +35,8 @@ class OpenNES
     {
         if (cpu) {
             cpu->setDebugMessage([](void* arg, const char* message) {
-                M6502* cpu = (M6502*)arg;
-                printf("%40s PC:$%04X A:$%02X X:$%02X Y:$%02X S:$%02X P:$%02X\n", message, cpu->R.pc, cpu->R.a, cpu->R.x, cpu->R.y, cpu->R.s, cpu->R.p);
+                M6502* cpu = ((OpenNES*)arg)->cpu;
+                printf("%-40s PC:$%04X A:$%02X X:$%02X Y:$%02X S:$%02X P:$%02X\n", message, cpu->R.pc, cpu->R.a, cpu->R.x, cpu->R.y, cpu->R.s, cpu->R.p);
             });
         }
     }
