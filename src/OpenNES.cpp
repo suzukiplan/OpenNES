@@ -25,6 +25,14 @@ OpenNES::OpenNES(bool isNTSC, ColorMode colorMode)
     this->ppu = new PPU();
     this->mmu = new MMU(ppuRead, ppuWrite, apuRead, apuWrite, this);
     this->cpu = new M6502(M6502_MODE_RP2A03, readMemory, writeMemory, this);
+    this->cpu->setConsumeClock([](void* arg) {
+        OpenNES* nes = (OpenNES*)arg;
+        // execute 3 PPU ticks
+        // https://wiki.nesdev.com/w/index.php/PPU_frame_timing
+        nes->ppu->tick();
+        nes->ppu->tick();
+        nes->ppu->tick();
+    });
 }
 
 OpenNES::~OpenNES()
