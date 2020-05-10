@@ -5,22 +5,64 @@
 
 class PPU
 {
-  public:
+  private:
+    struct Callback {
+        void* arg;
+        void (*endOfFrame)(void* arg);
+    } CB;
     int frameCycleClock;
+
+  public:
+    unsigned char display[256 * 240]; // NES pallete display
+    struct VideoMemory {
+        unsigned char ptn1;
+        unsigned char ptn2;
+        unsigned char name[4]; // 0: LeftTop, 1: RightTop, 2: LeftBottom, 3: RightBottom
+        unsigned char nameBuffer[4][0x400];
+        unsigned char palette[0x20];
+        unsigned char oam[0x100];
+        unsigned char vramAddrTmp[2];
+        int vramAddrUpdateClock;
+    } M;
+
     struct Register {
         unsigned char status;
         unsigned char internalFlag; // bit7: need update vram, bit0: toggle
         unsigned char scroll[2];
-        unsigned char vramAddrTmp[2];
         unsigned short vramAddr;
         int clock;
-        int vramAddrUpdateClock;
         int line;
     } R;
 
-    PPU(bool isNTSC)
+    void setEndOfFrame(void* arg, void (*endOfFrame)(void* arg))
+    {
+        CB.arg = arg;
+        CB.endOfFrame = endOfFrame;
+    }
+
+    void setup(MMU::RomData* rom, bool isNTSC)
     {
         memset(&R, 0, sizeof(R));
+        memset(&M, 0, sizeof(M));
+        if (rom->ignoreMirroring) {
+            // 4 screen
+            M.name[0] = 0;
+            M.name[1] = 1;
+            M.name[2] = 2;
+            M.name[3] = 3;
+        } else if (rom->mirroring) {
+            // vertical mirroring
+            M.name[0] = 0;
+            M.name[1] = 1;
+            M.name[2] = 0;
+            M.name[3] = 1;
+        } else {
+            // horizontal mirroring
+            M.name[0] = 0;
+            M.name[1] = 0;
+            M.name[2] = 1;
+            M.name[3] = 1;
+        }
         frameCycleClock = isNTSC ? 89342 : 105710;
     }
 
@@ -42,10 +84,10 @@ class PPU
                 R.internalFlag ^= 0b00000001;
                 break;
             case 0x2006:
-                R.vramAddrTmp[R.internalFlag & 1] = value;
+                M.vramAddrTmp[R.internalFlag & 1] = value;
                 if (R.internalFlag & 1) {
                     // update after 3 PPU clocks
-                    R.vramAddrUpdateClock = (R.clock + 3) % frameCycleClock;
+                    M.vramAddrUpdateClock = (R.clock + 3) % frameCycleClock;
                     R.internalFlag |= 0b10000000;
                 }
                 R.internalFlag ^= 0b00000001;
@@ -63,9 +105,9 @@ class PPU
     {
         R.clock++;
         R.clock %= frameCycleClock;
-        if (R.internalFlag & 0b10000000 && R.clock == R.vramAddrUpdateClock) {
+        if (R.internalFlag & 0b10000000 && R.clock == M.vramAddrUpdateClock) {
             R.internalFlag &= 0b01111111;
-            R.vramAddr = R.vramAddrTmp[0] * 256 + R.vramAddrTmp[1];
+            R.vramAddr = M.vramAddrTmp[0] * 256 + M.vramAddrTmp[1];
         }
         if (R.line != R.clock / 341) {
             R.line = R.clock / 341;
@@ -73,6 +115,7 @@ class PPU
                 case 241: // start vertical blanking line
                     R.status |= 0b10000000;
                     cpu->NMI();
+                    CB.endOfFrame(CB.arg);
                     return;
                 case 261: // pre-render scanline
                     R.status &= 0b01111111;

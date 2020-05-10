@@ -10,6 +10,27 @@ class MMU
   private:
     void* arg;
 
+    void _freeData()
+    {
+        if (romData.prgData) free(romData.prgData);
+        if (romData.chrData) free(romData.chrData);
+        memset(&romData, 0, sizeof(romData));
+    }
+
+    void _clearRAM()
+    {
+        memset(&M, 0, sizeof(M));
+        memset(&R, 0, sizeof(R));
+    }
+
+    size_t _getSizeValue(unsigned int exponent, unsigned int multiplier)
+    {
+        if (exponent > 60) exponent = 60;
+        multiplier = multiplier * 2 + 1;
+        return multiplier * (size_t)1 << exponent;
+    }
+
+  public:
     struct RomData {
         unsigned char* prgData;       // raw data of ROM
         unsigned char* chrData;       // raw data of CHR
@@ -26,39 +47,18 @@ class MMU
         bool isVS;                    // VS Unisystem
     } romData;
 
+    struct MainMemory {
+        unsigned char ram[0x800];    // WRAM
+        unsigned char exRam[0x2000]; // Extra RAM
+        unsigned char sram[0x2000];  // Battery backup
+    } M;
+
     struct Register {
         unsigned char bank[4];
         unsigned char pad[2];
         unsigned char reserved[10];
-    };
+    } R;
 
-    void _freeData()
-    {
-        if (romData.prgData) free(romData.prgData);
-        if (romData.chrData) free(romData.chrData);
-        memset(&romData, 0, sizeof(romData));
-    }
-
-    void _clearRAM()
-    {
-        memset(ram, 0, sizeof(ram));
-        memset(exRam, 0, sizeof(exRam));
-        memset(sram, 0, sizeof(sram));
-        memset(&reg, 0, sizeof(reg));
-    }
-
-    size_t _getSizeValue(unsigned int exponent, unsigned int multiplier)
-    {
-        if (exponent > 60) exponent = 60;
-        multiplier = multiplier * 2 + 1;
-        return multiplier * (size_t)1 << exponent;
-    }
-
-  public:
-    unsigned char ram[0x800];    // WRAM
-    unsigned char exRam[0x2000]; // Extra RAM
-    unsigned char sram[0x2000];  // Battery backup
-    struct Register reg;         // MMU register
     unsigned char (*ppuRead)(void* arg, unsigned short addr);
     void (*ppuWrite)(void* arg, unsigned short addr, unsigned char value);
     unsigned char (*apuRead)(void* arg, unsigned short addr);
@@ -87,14 +87,14 @@ class MMU
     unsigned char readMemory(unsigned short addr)
     {
         unsigned char page = (addr & 0xFF00) >> 8;
-        if (page < 0x20) return ram[addr & 0x7FF];                                                        // WRAM
+        if (page < 0x20) return M.ram[addr & 0x7FF];                                                      // WRAM
         if (page < 0x40) return ppuRead(arg, 0x2000 + (addr & 0b111));                                    // PPU I/O
         if (addr < 0x4020) return apuRead(arg, addr);                                                     // APU I/O
-        if (page < 0x60) return exRam[addr - 0x4000];                                                     // ExRAM
+        if (page < 0x60) return M.exRam[addr - 0x4000];                                                   // ExRAM
         if (romData.hasTrainer && 0x7000 <= addr && addr < 0x7200) return romData.trainer[addr - 0x7000]; // Trainer
-        if (page < 0x80) return romData.hasButtryBackup ? sram[addr - 0x6000] : 0;                        // SRAM (Battery backup)
+        if (page < 0x80) return romData.hasButtryBackup ? M.sram[addr - 0x6000] : 0;                      // SRAM (Battery backup)
         // Read from ROM
-        unsigned int ptr = reg.bank[(addr & 0b0110000000000000) >> 13];
+        unsigned int ptr = R.bank[(addr & 0b0110000000000000) >> 13];
         ptr *= 0x2000;
         ptr |= addr & 0x1FFF;
         return ptr < romData.prgSize ? romData.prgData[ptr] : 0x00;
@@ -104,15 +104,15 @@ class MMU
     {
         unsigned char page = (addr & 0xFF00) >> 8;
         if (page < 0x20) {
-            ram[addr & 0x7FF] = value;
+            M.ram[addr & 0x7FF] = value;
         } else if (page < 0x40) {
             ppuWrite(arg, 0x2000 + (addr & 0b111), value);
         } else if (addr < 0x4020) {
             apuWrite(arg, addr, value);
         } else if (page < 0x60) {
-            exRam[addr - 0x4000] = value;
+            M.exRam[addr - 0x4000] = value;
         } else if (romData.hasButtryBackup && page < 0x80) {
-            sram[addr - 0x6000] = value;
+            M.sram[addr - 0x6000] = value;
         } else {
             // Write to ROM area
         }
@@ -158,15 +158,15 @@ class MMU
         if (NULL == (romData.prgData = (unsigned char*)malloc(romData.prgSize))) return false;
         memcpy(romData.prgData, &data[ptr], romData.prgSize);
         if (0x8000 <= romData.prgSize) {
-            reg.bank[0] = 0;
-            reg.bank[1] = 1;
-            reg.bank[2] = 2;
-            reg.bank[3] = 3;
+            R.bank[0] = 0;
+            R.bank[1] = 1;
+            R.bank[2] = 2;
+            R.bank[3] = 3;
         } else {
-            reg.bank[0] = 0;
-            reg.bank[1] = 1;
-            reg.bank[2] = 0;
-            reg.bank[3] = 1;
+            R.bank[0] = 0;
+            R.bank[1] = 1;
+            R.bank[2] = 0;
+            R.bank[3] = 1;
         }
         ptr += romData.prgSize;
         if (0 < romData.chrSize) {
@@ -183,23 +183,23 @@ class MMU
     {
         char buf[0x2000];
         memset(buf, 0, sizeof(buf));
-        return 0 != memcmp(exRam, buf, 0x2000);
+        return 0 != memcmp(M.exRam, buf, 0x2000);
     }
 
     size_t getStateSize()
     {
         size_t size = 4;
         size += 3;
-        size += sizeof(ram);
+        size += sizeof(M.ram);
         size += 3;
-        size += sizeof(reg);
+        size += sizeof(R);
         if (isUsingExRam()) {
             size += 3;
-            size += sizeof(exRam);
+            size += sizeof(M.exRam);
         }
         if (romData.hasButtryBackup) {
             size += 3;
-            size += sizeof(sram);
+            size += sizeof(M.sram);
         }
         return size;
     }
@@ -214,35 +214,35 @@ class MMU
         cp[ptr++] = (ds & 0xFF00) >> 8;
         cp[ptr++] = ds & 0xFF;
 
-        ds = (unsigned short)sizeof(ram);
+        ds = (unsigned short)sizeof(M.ram);
         cp[ptr++] = 'W';
         cp[ptr++] = (ds & 0xFF00) >> 8;
         cp[ptr++] = ds & 0xFF;
-        memcpy(&cp[ptr], ram, ds);
+        memcpy(&cp[ptr], M.ram, ds);
         ptr += ds;
 
-        ds = (unsigned short)sizeof(reg);
+        ds = (unsigned short)sizeof(R);
         cp[ptr++] = 'R';
         cp[ptr++] = (ds & 0xFF00) >> 8;
         cp[ptr++] = ds & 0xFF;
-        memcpy(&cp[ptr], &reg, ds);
+        memcpy(&cp[ptr], &R, ds);
         ptr += ds;
 
         if (isUsingExRam()) {
-            ds = (unsigned short)sizeof(exRam);
+            ds = (unsigned short)sizeof(M.exRam);
             cp[ptr++] = 'E';
             cp[ptr++] = (ds & 0xFF00) >> 8;
             cp[ptr++] = ds & 0xFF;
-            memcpy(&cp[ptr], exRam, ds);
+            memcpy(&cp[ptr], M.exRam, ds);
             ptr += ds;
         }
 
         if (romData.hasButtryBackup) {
-            ds = (unsigned short)sizeof(sram);
+            ds = (unsigned short)sizeof(M.sram);
             cp[ptr++] = 'S';
             cp[ptr++] = (ds & 0xFF00) >> 8;
             cp[ptr++] = ds & 0xFF;
-            memcpy(&cp[ptr], sram, ds);
+            memcpy(&cp[ptr], M.sram, ds);
             ptr += ds;
         }
     }
@@ -261,10 +261,10 @@ class MMU
             unsigned short ds = cp[ptr++] * 256;
             ds += cp[ptr++];
             switch (t) {
-                case 'W': memcpy(ram, &cp[ptr], ds); break;
-                case 'R': memcpy(&reg, &cp[ptr], ds); break;
-                case 'E': memcpy(exRam, &cp[ptr], ds); break;
-                case 'S': memcpy(sram, &cp[ptr], ds); break;
+                case 'W': memcpy(M.ram, &cp[ptr], ds); break;
+                case 'R': memcpy(&R, &cp[ptr], ds); break;
+                case 'E': memcpy(M.exRam, &cp[ptr], ds); break;
+                case 'S': memcpy(M.sram, &cp[ptr], ds); break;
             }
             ptr += ds;
         }

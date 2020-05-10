@@ -22,7 +22,10 @@ OpenNES::OpenNES(bool isNTSC, ColorMode colorMode)
     this->isNTSC = isNTSC;
     this->colorMode = colorMode;
     this->apu = new APU();
-    this->ppu = new PPU(isNTSC);
+    this->ppu = new PPU();
+    ppu->setEndOfFrame(this, [](void* arg) {
+        // TODO: copy PPU display (NES palette) to OpenNES display (16bit color)
+    });
     this->mmu = new MMU(ppuRead, ppuWrite, apuRead, apuWrite, this);
     this->cpu = new M6502(M6502_MODE_RP2A03, readMemory, writeMemory, this);
     this->cpu->setConsumeClock([](void* arg) {
@@ -46,7 +49,10 @@ OpenNES::~OpenNES()
 bool OpenNES::loadRom(void* data, size_t size)
 {
     bool result = this->mmu ? mmu->loadRom((unsigned char*)data, size) : false;
-    if (result) this->reset();
+    if (result) {
+        ppu->setup(&mmu->romData, isNTSC);
+        this->reset();
+    }
     return result;
 }
 
@@ -84,7 +90,7 @@ void OpenNES::reset()
 void OpenNES::tick(unsigned char pad1, unsigned char pad2)
 {
     if (!cpu || !mmu) return;
-    mmu->reg.pad[0] = pad1;
-    mmu->reg.pad[1] = pad2;
+    mmu->R.pad[0] = pad1;
+    mmu->R.pad[1] = pad2;
     cpu->execute(0, true);
 }
