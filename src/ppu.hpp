@@ -27,6 +27,14 @@ class PPU
 
     inline void outPort(unsigned short addr, unsigned char value)
     {
+        switch (addr) {
+            case 0x2007:
+                // 暫定処理: PPUに対するwriteが印字可能なASCIIコードだったらstderrに印字
+                if (isprint(value)) {
+                    fprintf(stderr, "%c", (char)value);
+                }
+                break;
+        }
     }
 
     inline void tick(M6502* cpu)
