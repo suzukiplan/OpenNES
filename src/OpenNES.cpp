@@ -86,5 +86,5 @@ void OpenNES::tick(unsigned char pad1, unsigned char pad2)
     if (!cpu || !mmu) return;
     mmu->reg.pad[0] = pad1;
     mmu->reg.pad[1] = pad2;
-    cpu->execute(isNTSC ? 1789773 / 60 : 1773447 / 60);
+    cpu->execute(0, true);
 }
