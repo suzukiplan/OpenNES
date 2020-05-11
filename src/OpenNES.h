@@ -17,7 +17,7 @@ class OpenNES
 
   private:
     bool isNTSC;
-    ColorMode colorMode;
+    int cpuClockHz;
 
   public:
     APU* apu;
