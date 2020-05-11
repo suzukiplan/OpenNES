@@ -115,17 +115,12 @@ class PPU
                 R.internalFlag ^= 0b00000001;
                 break;
             case 0x2007: { // write VRAM
-                if (addr < 0x2000) {
-                    M.pattern[addr / 0x1000][addr & 0xFFF] = value;
-                } else if (addr < 0x3000) {
-                    M.nameBuffer[addr / 0x400][addr & 0x3FF] = value;
-                    if (isprint(value) && (addr & 0x3FF) < 0x3C0) fprintf(stderr, "%c", value); // 暫定処理
-                } else if (addr < 0x3F00) {
-                    addr -= 0x1000;
-                    M.nameBuffer[addr / 0x400][addr & 0x3FF] = value;
-                    if (isprint(value) && (addr & 0x3FF) < 0x3C0) fprintf(stderr, "%c", value); // 暫定処理
-                } else if (addr < 0x4000) {
-                    M.palette[(addr & 0x1F) / 4][addr & 0x3] = value;
+                if (R.vramAddr < 0x2000) {
+                    M.pattern[R.vramAddr / 0x1000][R.vramAddr & 0xFFF] = value;
+                } else if (R.vramAddr < 0x3F00) {
+                    M.nameBuffer[(R.vramAddr & 0xFFF) / 0x400][R.vramAddr & 0x3FF] = value;
+                } else if (R.vramAddr < 0x4000) {
+                    M.palette[(R.vramAddr & 0x1F) / 4][R.vramAddr & 0x3] = value;
                 }
                 R.vramAddr += W.ctrl.vramIncrement;
                 R.vramAddr &= 0x3FFF;
@@ -142,11 +137,16 @@ class PPU
         if (R.internalFlag & 0b10000000 && R.clock == M.vramAddrUpdateClock) {
             R.internalFlag &= 0b01111111;
             R.vramAddr = M.vramAddrTmp[0] * 256 + M.vramAddrTmp[1];
+            R.vramAddr &= 0x3FFF;
         }
         // update current line
         if (R.line != R.clock / 341) {
             R.line = R.clock / 341;
             switch (R.line) {
+                case 0:
+                    // clear display to the sprite palette #0 color 0
+                    memset(display, M.palette[4][0], sizeof(display));
+                    break;
                 case 241: // start vertical blanking line
                     R.status |= 0b10000000;
                     if (W.ctrl.generateNMI) cpu->NMI();
@@ -160,7 +160,10 @@ class PPU
         // draw BG pixel if current position is in (0, 0) until (255, 239)
         if (R.line < 240) {
             if (pixel < 256) {
-                display[R.line * 256 + pixel] = _bgPixelOf(pixel, R.line);
+                unsigned char c = _bgPixelOf(pixel, R.line);
+                if (0 == (c & 0x80)) {
+                    display[R.line * 256 + pixel] = c;
+                }
             }
         }
     }
@@ -176,16 +179,16 @@ class PPU
         x &= 0xFF;
         y &= 0xFF;
         int namePtr = x / 8;
-        namePtr += y * 4;
+        namePtr += y / 8 * 32;
         int pattern = M.nameBuffer[M.name[nameIndex]][namePtr] * 16;
         x &= 0b0111;
-        int bit = 1 << x;
+        int bit = 0b10000000 >> x;
         y &= 0b0111;
-        unsigned char colorU = M.pattern[W.ctrl.bgPatternIndex][pattern + y] & bit;
-        unsigned char colorL = M.pattern[W.ctrl.bgPatternIndex][pattern + 8 + y] & bit;
-        unsigned char color = (colorU ? 2 : 0) | colorL ? 1 : 0;
+        unsigned char colorU = M.pattern[W.ctrl.bgPatternIndex][pattern + y] & bit ? 0x02 : 0x00;
+        unsigned char colorL = M.pattern[W.ctrl.bgPatternIndex][pattern + 8 + y] & bit ? 0x01 : 0x00;
+        unsigned char color = colorU | colorL;
         // TODO: acquire 2bit palette index from attribute area (temporarily always use BG palette 0)
-        return M.palette[0][color];
+        return color ? M.palette[0][color] : 0x80;
     }
 
     inline void _updateWorkAreaCtrl()
