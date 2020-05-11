@@ -42,8 +42,6 @@ void displayToBitmap(unsigned short* display)
     hed.bitCount = 32;
     hed.compression = 0;
     hed.sizeImage = 256 * 240 * 4;
-    hed.dpmX = hed.width * 1000;
-    hed.dpmY = hed.height * 1000;
     hed.numberOfPalettes = 0;
     hed.cir = 0;
     FILE* fp = fopen(bitmap, "wb");
