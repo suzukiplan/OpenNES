@@ -11,6 +11,8 @@ class PPU
         void (*endOfFrame)(void* arg);
     } CB;
     int frameCycleClock;
+    bool dipswIgnoreMirroring;
+    bool dipswMirroring;
 
   public:
     unsigned char display[256 * 240]; // NES pallete display
@@ -18,11 +20,27 @@ class PPU
         unsigned char pattern[2][0x1000];
         unsigned char name[4]; // 0: LeftTop, 1: RightTop, 2: LeftBottom, 3: RightBottom
         unsigned char nameBuffer[4][0x400];
-        unsigned char palette[0x20];
+        unsigned char palette[8][4];
         unsigned char oam[0x100];
         unsigned char vramAddrTmp[2];
         int vramAddrUpdateClock;
     } M;
+
+    // Temporarily stores work information obtained from ctrl and mask.
+    // Store to $ 2000, $ 2001, or recalculate on state load.
+    // Note: This data does not require state saving.
+    struct WorkAreaCtrl {
+        int baseNameTableIndex;   // Base nametable index (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
+        int vramIncrement;        // VRAM address increment per CPU read/write of PPUDATA (1 or 32)
+        int spritePatternIndex;   // Sprite pattern table index for 8x8 sprites (0 or 1 / ignored in 8x16 mode)
+        int bgPatternIndex;       // BG pattern table index
+        bool isSprite8x16;        // Sprite size (false: 8x8 pixels; true: 8x16 pixels)
+        int ppuMasterSlaveSelect; // PPU master/slave select (0: read backdrop from EXT pins; 1: output color on EXT pins)
+        bool generateNMI;         // Generate an NMI at the start of the vertical blanking interval (false: off; true: on)
+    };
+    struct WorkArea {
+        struct WorkAreaCtrl ctrl;
+    } W;
 
     struct Register {
         unsigned char ctrl;
@@ -45,25 +63,9 @@ class PPU
     {
         memset(&R, 0, sizeof(R));
         memset(&M, 0, sizeof(M));
-        if (rom->ignoreMirroring) {
-            // 4 screen
-            M.name[0] = 0;
-            M.name[1] = 1;
-            M.name[2] = 2;
-            M.name[3] = 3;
-        } else if (rom->mirroring) {
-            // vertical mirroring
-            M.name[0] = 0;
-            M.name[1] = 1;
-            M.name[2] = 0;
-            M.name[3] = 1;
-        } else {
-            // horizontal mirroring
-            M.name[0] = 0;
-            M.name[1] = 0;
-            M.name[2] = 1;
-            M.name[3] = 1;
-        }
+        this->dipswIgnoreMirroring = rom->ignoreMirroring;
+        this->dipswMirroring = rom->mirroring;
+        _updateWorkAreaCtrl();
         frameCycleClock = isNTSC ? 89342 : 105710;
     }
 
@@ -81,18 +83,8 @@ class PPU
     {
         switch (addr) {
             case 0x2000: // Controller
-                /**
-                 * VPHB SINN
-                 * |||| ||||
-                 * |||| ||++- Base nametable address (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
-                 * |||| |+--- VRAM address increment per CPU read/write of PPUDATA (0: add 1, going across; 1: add 32, going down)
-                 * |||| +---- Sprite pattern table address for 8x8 sprites (0: $0000; 1: $1000; ignored in 8x16 mode)
-                 * |||+------ Background pattern table address (0: $0000; 1: $1000)
-                 * ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels)
-                 * |+-------- PPU master/slave select (0: read backdrop from EXT pins; 1: output color on EXT pins)
-                 * +--------- Generate an NMI at the start of the vertical blanking interval (0: off; 1: on)
-                 */
                 R.ctrl = value;
+                _updateWorkAreaCtrl();
                 break;
             case 0x2001: // Mask
                 /**
@@ -133,9 +125,10 @@ class PPU
                     M.nameBuffer[addr / 0x400][addr & 0x3FF] = value;
                     if (isprint(value) && (addr & 0x3FF) < 0x3C0) fprintf(stderr, "%c", value); // 暫定処理
                 } else if (addr < 0x4000) {
-                    M.palette[addr & 0x1F] = value;
+                    M.palette[(addr & 0x1F) / 4][addr & 0x3] = value;
                 }
-                R.vramAddr += R.ctrl & 0b00000100 ? 32 : 1;
+                R.vramAddr += W.ctrl.vramIncrement;
+                R.vramAddr &= 0x3FFF;
                 break;
             }
         }
@@ -145,16 +138,18 @@ class PPU
     {
         R.clock++;
         R.clock %= frameCycleClock;
+        const int pixel = R.clock % 341;
         if (R.internalFlag & 0b10000000 && R.clock == M.vramAddrUpdateClock) {
             R.internalFlag &= 0b01111111;
             R.vramAddr = M.vramAddrTmp[0] * 256 + M.vramAddrTmp[1];
         }
+        // update current line
         if (R.line != R.clock / 341) {
             R.line = R.clock / 341;
             switch (R.line) {
                 case 241: // start vertical blanking line
                     R.status |= 0b10000000;
-                    if (R.ctrl & 0x80) cpu->NMI();
+                    if (W.ctrl.generateNMI) cpu->NMI();
                     CB.endOfFrame(CB.arg);
                     return;
                 case 261: // pre-render scanline
@@ -162,9 +157,8 @@ class PPU
                     return;
             }
         }
-        // draw pixel
+        // draw BG pixel if current position is in (0, 0) until (255, 239)
         if (R.line < 240) {
-            int pixel = R.clock % 341;
             if (pixel < 256) {
                 display[R.line * 256 + pixel] = _bgPixelOf(pixel, R.line);
             }
@@ -174,7 +168,67 @@ class PPU
   private:
     inline unsigned char _bgPixelOf(int x, int y)
     {
-        return 0;
+        x += R.scroll[0];
+        y += R.scroll[1];
+        int nameIndex = 0;
+        if (255 < x) nameIndex += 1;
+        if (255 < y) nameIndex += 2;
+        x &= 0xFF;
+        y &= 0xFF;
+        int namePtr = x / 8;
+        namePtr += y * 4;
+        int pattern = M.nameBuffer[M.name[nameIndex]][namePtr] * 16;
+        x &= 0b0111;
+        int bit = 1 << x;
+        y &= 0b0111;
+        unsigned char colorU = M.pattern[W.ctrl.bgPatternIndex][pattern + y] & bit;
+        unsigned char colorL = M.pattern[W.ctrl.bgPatternIndex][pattern + 8 + y] & bit;
+        unsigned char color = (colorU ? 2 : 0) | colorL ? 1 : 0;
+        // TODO: acquire 2bit palette index from attribute area (temporarily always use BG palette 0)
+        return M.palette[0][color];
+    }
+
+    inline void _updateWorkAreaCtrl()
+    {
+        /**
+         * VPHB SINN
+         * |||| ||||
+         * |||| ||++- Base nametable address (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
+         * |||| |+--- VRAM address increment per CPU read/write of PPUDATA (0: add 1, going across; 1: add 32, going down)
+         * |||| +---- Sprite pattern table address for 8x8 sprites (0: $0000; 1: $1000; ignored in 8x16 mode)
+         * |||+------ Background pattern table address (0: $0000; 1: $1000)
+         * ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels)
+         * |+-------- PPU master/slave select (0: read backdrop from EXT pins; 1: output color on EXT pins)
+         * +--------- Generate an NMI at the start of the vertical blanking interval (0: off; 1: on)
+         */
+        W.ctrl.baseNameTableIndex = R.ctrl & 0b00000011;
+        W.ctrl.vramIncrement = R.ctrl & 0b00000100 ? 32 : 1;
+        W.ctrl.spritePatternIndex = R.ctrl & 0b00001000 ? 1 : 0;
+        W.ctrl.bgPatternIndex = R.ctrl & 0b00010000 ? 1 : 0;
+        W.ctrl.isSprite8x16 = R.ctrl & 0b00100000 ? true : false;
+        W.ctrl.ppuMasterSlaveSelect = R.ctrl & 0b01000000 ? 1 : 0;
+        W.ctrl.generateNMI = R.ctrl & 0b10000000 ? true : false;
+
+        // update name table index
+        if (dipswIgnoreMirroring) {
+            // 4 screen
+            M.name[0] = W.ctrl.baseNameTableIndex;
+            M.name[1] = (W.ctrl.baseNameTableIndex + 1) & 0b00000011;
+            M.name[2] = (W.ctrl.baseNameTableIndex + 2) & 0b00000011;
+            M.name[3] = (W.ctrl.baseNameTableIndex + 3) & 0b00000011;
+        } else if (dipswMirroring) {
+            // vertical mirroring
+            M.name[0] = W.ctrl.baseNameTableIndex;
+            M.name[1] = (W.ctrl.baseNameTableIndex + 1) & 0b00000011;
+            M.name[2] = W.ctrl.baseNameTableIndex;
+            M.name[3] = (W.ctrl.baseNameTableIndex + 1) & 0b00000011;
+        } else {
+            // horizontal mirroring
+            M.name[0] = W.ctrl.baseNameTableIndex;
+            M.name[1] = W.ctrl.baseNameTableIndex;
+            M.name[2] = (W.ctrl.baseNameTableIndex + 1) & 0b00000011;
+            M.name[3] = (W.ctrl.baseNameTableIndex + 1) & 0b00000011;
+        }
     }
 };
 
