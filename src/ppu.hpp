@@ -15,8 +15,7 @@ class PPU
   public:
     unsigned char display[256 * 240]; // NES pallete display
     struct VideoMemory {
-        unsigned char ptn1;
-        unsigned char ptn2;
+        unsigned char pattern[2][0x1000];
         unsigned char name[4]; // 0: LeftTop, 1: RightTop, 2: LeftBottom, 3: RightBottom
         unsigned char nameBuffer[4][0x400];
         unsigned char palette[0x20];
@@ -26,6 +25,8 @@ class PPU
     } M;
 
     struct Register {
+        unsigned char ctrl;
+        unsigned char mask;
         unsigned char status;
         unsigned char internalFlag; // bit7: need update vram, bit0: toggle
         unsigned char scroll[2];
@@ -79,11 +80,40 @@ class PPU
     inline void outPort(unsigned short addr, unsigned char value)
     {
         switch (addr) {
-            case 0x2005:
+            case 0x2000: // Controller
+                /**
+                 * VPHB SINN
+                 * |||| ||||
+                 * |||| ||++- Base nametable address (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
+                 * |||| |+--- VRAM address increment per CPU read/write of PPUDATA (0: add 1, going across; 1: add 32, going down)
+                 * |||| +---- Sprite pattern table address for 8x8 sprites (0: $0000; 1: $1000; ignored in 8x16 mode)
+                 * |||+------ Background pattern table address (0: $0000; 1: $1000)
+                 * ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels)
+                 * |+-------- PPU master/slave select (0: read backdrop from EXT pins; 1: output color on EXT pins)
+                 * +--------- Generate an NMI at the start of the vertical blanking interval (0: off; 1: on)
+                 */
+                R.ctrl = value;
+                break;
+            case 0x2001: // Mask
+                /**
+                 * BGRs bMmG
+                 * |||| ||||
+                 * |||| |||+- Greyscale (0: normal color, 1: produce a greyscale display)
+                 * |||| ||+-- 1: Show background in leftmost 8 pixels of screen, 0: Hide
+                 * |||| |+--- 1: Show sprites in leftmost 8 pixels of screen, 0: Hide
+                 * |||| +---- 1: Show background
+                 * |||+------ 1: Show sprites
+                 * ||+------- Emphasize red
+                 * |+-------- Emphasize green
+                 * +--------- Emphasize blue
+                 */
+                R.mask = value;
+                break;
+            case 0x2005: // Scroll
                 R.scroll[R.internalFlag & 1] = value;
                 R.internalFlag ^= 0b00000001;
                 break;
-            case 0x2006:
+            case 0x2006: // VRAM address
                 M.vramAddrTmp[R.internalFlag & 1] = value;
                 if (R.internalFlag & 1) {
                     // update after 3 PPU clocks
@@ -92,12 +122,22 @@ class PPU
                 }
                 R.internalFlag ^= 0b00000001;
                 break;
-            case 0x2007:
-                // 暫定処理: PPUに対するwriteが印字可能なASCIIコードだったらstderrに印字
-                if (isprint(value)) {
-                    fprintf(stderr, "%c", (char)value);
+            case 0x2007: { // write VRAM
+                if (addr < 0x2000) {
+                    M.pattern[addr / 0x1000][addr & 0xFFF] = value;
+                } else if (addr < 0x3000) {
+                    M.nameBuffer[addr / 0x400][addr & 0x3FF] = value;
+                    if (isprint(value)) fprintf(stderr, "%c", value); // 暫定処理
+                } else if (addr < 0x3F00) {
+                    addr -= 0x1000;
+                    M.nameBuffer[addr / 0x400][addr & 0x3FF] = value;
+                    if (isprint(value)) fprintf(stderr, "%c", value); // 暫定処理
+                } else if (addr < 0x4000) {
+                    M.palette[addr & 0x1F] = value;
                 }
+                R.vramAddr += R.ctrl & 0b00000100 ? 32 : 1;
                 break;
+            }
         }
     }
 
@@ -114,7 +154,7 @@ class PPU
             switch (R.line) {
                 case 241: // start vertical blanking line
                     R.status |= 0b10000000;
-                    cpu->NMI();
+                    if (R.ctrl & 0x80) cpu->NMI();
                     CB.endOfFrame(CB.arg);
                     return;
                 case 261: // pre-render scanline
@@ -122,6 +162,19 @@ class PPU
                     return;
             }
         }
+        // draw pixel
+        if (R.line < 240) {
+            int pixel = R.clock % 341;
+            if (pixel < 256) {
+                display[R.line * 256 + pixel] = _bgPixelOf(pixel, R.line);
+            }
+        }
+    }
+
+  private:
+    inline unsigned char _bgPixelOf(int x, int y)
+    {
+        return 0;
     }
 };
 
