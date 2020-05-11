@@ -1,5 +1,9 @@
-all: nestest
+all: src/M6502/m6502.hpp nestest
 	./nestest test/rom/branch_timing_tests/1.Branch_Basics.nes 60 E4F0 >result_1.Branch_Basics.log
+
+src/M6502/m6502.hpp:
+	git submodule init
+	git submodule update
 
 OpenNES.o: src/OpenNES.cpp src/OpenNES.h src/mmu.hpp src/ppu.hpp src/apu.hpp src/M6502/m6502.hpp
 	clang++ -std=c++14 -c src/OpenNES.cpp
