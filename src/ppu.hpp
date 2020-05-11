@@ -127,11 +127,11 @@ class PPU
                     M.pattern[addr / 0x1000][addr & 0xFFF] = value;
                 } else if (addr < 0x3000) {
                     M.nameBuffer[addr / 0x400][addr & 0x3FF] = value;
-                    if (isprint(value)) fprintf(stderr, "%c", value); // 暫定処理
+                    if (isprint(value) && (addr & 0x3FF) < 0x3C0) fprintf(stderr, "%c", value); // 暫定処理
                 } else if (addr < 0x3F00) {
                     addr -= 0x1000;
                     M.nameBuffer[addr / 0x400][addr & 0x3FF] = value;
-                    if (isprint(value)) fprintf(stderr, "%c", value); // 暫定処理
+                    if (isprint(value) && (addr & 0x3FF) < 0x3C0) fprintf(stderr, "%c", value); // 暫定処理
                 } else if (addr < 0x4000) {
                     M.palette[addr & 0x1F] = value;
                 }
