@@ -1,1 +1,2 @@
-result_1.Branch_Basics.bmp filter=lfs diff=lfs merge=lfs -text
+*.bmp filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text
