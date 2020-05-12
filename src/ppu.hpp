@@ -165,6 +165,8 @@ class PPU
             R.status |= 0b10000000;
             if (W.ctrl.generateNMI) cpu->NMI();
             CB.endOfFrame(CB.arg);
+        } else if (R.line == 261 && pixel == 1) {
+            R.status &= 0b01111111;
         }
     }
 
