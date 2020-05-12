@@ -63,11 +63,13 @@ class MMU
     void (*ppuWrite)(void* arg, unsigned short addr, unsigned char value);
     unsigned char (*apuRead)(void* arg, unsigned short addr);
     void (*apuWrite)(void* arg, unsigned short addr, unsigned char value);
+    void (*oamdma)(void* arg, unsigned char page);
 
     MMU(unsigned char (*ppuRead)(void* arg, unsigned short addr),
         void (*ppuWrite)(void* arg, unsigned short addr, unsigned char value),
         unsigned char (*apuRead)(void* arg, unsigned short addr),
         void (*apuWrite)(void* arg, unsigned short addr, unsigned char value),
+        void (*oamdma)(void* arg, unsigned char page),
         void* arg)
     {
         this->arg = arg;
@@ -77,6 +79,7 @@ class MMU
         this->ppuWrite = ppuWrite;
         this->apuRead = apuRead;
         this->apuWrite = apuWrite;
+        this->oamdma = oamdma;
     }
 
     ~MMU()
@@ -107,6 +110,8 @@ class MMU
             M.ram[addr & 0x7FF] = value;
         } else if (page < 0x40) {
             ppuWrite(arg, 0x2000 + (addr & 0b111), value);
+        } else if (addr == 0x4014) {
+            oamdma(arg, value);
         } else if (addr < 0x4020) {
             apuWrite(arg, addr, value);
         } else if (page < 0x60) {

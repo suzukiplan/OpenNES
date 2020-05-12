@@ -26,6 +26,23 @@ static void apuWrite(void* arg, unsigned short addr, unsigned char value) { ((Op
 static unsigned char readMemory(void* arg, unsigned short addr) { return ((OpenNES*)arg)->mmu->readMemory(addr); }
 static void writeMemory(void* arg, unsigned short addr, unsigned char value) { ((OpenNES*)arg)->mmu->writeMemory(addr, value); }
 
+static void oamdma(void* arg, unsigned char page)
+{
+    fprintf(stderr, "EXECUTE OAM DMA\n");
+    OpenNES* nes = (OpenNES*)arg;
+    nes->cpu->consumeClock(nes->cpu->R.tickCount & 1);
+    unsigned short addr = page;
+    addr <<= 8;
+    do {
+        unsigned char data = readMemory(nes, addr);
+        nes->cpu->consumeClock(1);
+        nes->ppu->M.oam[addr & 0xFF] = data;
+        nes->cpu->consumeClock(1);
+        addr++;
+    } while (addr & 0xFF);
+    nes->cpu->consumeClock(1);
+}
+
 OpenNES::OpenNES(bool isNTSC, ColorMode colorMode)
 {
     this->isNTSC = isNTSC;
@@ -42,7 +59,7 @@ OpenNES::OpenNES(bool isNTSC, ColorMode colorMode)
             nes->display[i] = _colorTable[nes->ppu->display[i]];
         }
     });
-    this->mmu = new MMU(ppuRead, ppuWrite, apuRead, apuWrite, this);
+    this->mmu = new MMU(ppuRead, ppuWrite, apuRead, apuWrite, oamdma, this);
     this->cpu = new M6502(M6502_MODE_RP2A03, readMemory, writeMemory, this);
     this->cpu->setConsumeClock([](void* arg) {
         OpenNES* nes = (OpenNES*)arg;

@@ -24,6 +24,7 @@ class OpenNES
     PPU* ppu;
     MMU* mmu;
     M6502* cpu;
+    unsigned int tickCount;
     unsigned short display[256 * 240];
     OpenNES(bool isNTSC, ColorMode colorMode);
     ~OpenNES();
