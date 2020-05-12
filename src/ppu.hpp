@@ -71,6 +71,7 @@ class PPU
 
     inline unsigned char inPort(unsigned short addr)
     {
+        fprintf(stdout, "PPU read from $%04X (PPU clock: %dHz - line:%d)\n", addr, R.clock, R.line); // 暫定処理（後で消す）
         switch (addr) {
             case 0x2002:
                 R.internalFlag = 0;
@@ -81,6 +82,7 @@ class PPU
 
     inline void outPort(unsigned short addr, unsigned char value)
     {
+        fprintf(stdout, "PPU write $%02X to $%04X (PPU clock: %dHz - line:%d)\n", value, addr, R.clock, R.line); // 暫定処理（後で消す）
         switch (addr) {
             case 0x2000: // Controller
                 R.ctrl = value;
