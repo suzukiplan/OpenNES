@@ -149,11 +149,6 @@ class PPU
                     // clear display to the sprite palette #0 color 0
                     memset(display, M.palette[4][0], sizeof(display));
                     break;
-                case 241: // start vertical blanking line
-                    R.status |= 0b10000000;
-                    if (W.ctrl.generateNMI) cpu->NMI();
-                    CB.endOfFrame(CB.arg);
-                    return;
                 case 261: // pre-render scanline
                     R.status &= 0b01111111;
                     return;
@@ -167,6 +162,10 @@ class PPU
                     display[R.line * 256 + pixel] = c;
                 }
             }
+        } else if (R.line == 241 && pixel == 1) {
+            R.status |= 0b10000000;
+            if (W.ctrl.generateNMI) cpu->NMI();
+            CB.endOfFrame(CB.arg);
         }
     }
 
