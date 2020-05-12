@@ -149,9 +149,6 @@ class PPU
                     // clear display to the sprite palette #0 color 0
                     memset(display, M.palette[4][0], sizeof(display));
                     break;
-                case 261: // pre-render scanline
-                    R.status &= 0b01111111;
-                    return;
             }
         }
         // draw BG pixel if current position is in (0, 0) until (255, 239)
