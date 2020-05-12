@@ -17,8 +17,6 @@ static const unsigned short _colorTableRGB565[256] = {
     0x669C, 0x7BCF, 0x0000, 0x0000, 0xFFFF, 0x969F, 0xA5DF, 0xC59F, 0xE59F, 0xFDDD, 0xFE57,
     0xFED4, 0xFF92, 0xCF90, 0xA794, 0xA7F9, 0xA7FE, 0xA514, 0x0000, 0x0000};
 
-static const unsigned short* _colorTable;
-
 static unsigned char ppuRead(void* arg, unsigned short addr) { return ((OpenNES*)arg)->ppu->inPort(addr); }
 static void ppuWrite(void* arg, unsigned short addr, unsigned char value) { ((OpenNES*)arg)->ppu->outPort(addr, value); }
 static unsigned char apuRead(void* arg, unsigned short addr) { return ((OpenNES*)arg)->apu->inPort(addr); }
@@ -48,15 +46,15 @@ OpenNES::OpenNES(bool isNTSC, ColorMode colorMode)
     this->isNTSC = isNTSC;
     this->cpuClockHz = isNTSC ? 1789773 : 1773447;
     switch (colorMode) {
-        case ColorMode::RGB555: _colorTable = _colorTableRGB555; break;
-        case ColorMode::RGB565: _colorTable = _colorTableRGB565; break;
+        case ColorMode::RGB555: this->colorTable = _colorTableRGB555; break;
+        case ColorMode::RGB565: this->colorTable = _colorTableRGB565; break;
     }
     this->apu = new APU();
     this->ppu = new PPU();
     ppu->setEndOfFrame(this, [](void* arg) {
         OpenNES* nes = (OpenNES*)arg;
         for (int i = 0; i < 256 * 240; i++) {
-            nes->display[i] = _colorTable[nes->ppu->display[i]];
+            nes->display[i] = nes->colorTable[nes->ppu->display[i]];
         }
     });
     this->mmu = new MMU(ppuRead, ppuWrite, apuRead, apuWrite, oamdma, this);

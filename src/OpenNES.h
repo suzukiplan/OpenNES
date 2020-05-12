@@ -18,6 +18,7 @@ class OpenNES
   private:
     bool isNTSC;
     int cpuClockHz;
+    const unsigned short* colorTable;
 
   public:
     APU* apu;
