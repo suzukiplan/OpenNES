@@ -75,7 +75,9 @@ class PPU
         switch (addr) {
             case 0x2002:
                 R.internalFlag = 0;
-                return R.status;
+                unsigned char result = R.status;
+                R.status &= 0b01111111;
+                return result;
         }
         return 0;
     }
