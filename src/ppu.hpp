@@ -47,6 +47,7 @@ class PPU
         unsigned char mask;
         unsigned char status;
         unsigned char internalFlag; // bit7: need update vram, bit0: toggle
+        unsigned char oamAddr;
         unsigned char scroll[2];
         unsigned short vramAddr;
         int clock;
@@ -81,11 +82,14 @@ class PPU
     {
         fprintf(stdout, "PPU read from $%04X (PPU clock: %dHz - line:%d)\n", addr, R.clock, R.line); // 暫定処理（後で消す）
         switch (addr) {
-            case 0x2002:
+            case 0x2002: {
                 R.internalFlag = 0;
                 unsigned char result = R.status;
                 R.status &= 0b01111111;
                 return result;
+            }
+            case 0x2004:
+                return M.oam[R.oamAddr];
         }
         return 0;
     }
@@ -97,6 +101,12 @@ class PPU
             case 0x2000: // Controller
                 R.ctrl = value;
                 _updateWorkAreaCtrl();
+                break;
+            case 0x2003:
+                R.oamAddr = value;
+                break;
+            case 0x2004:
+                M.oam[R.oamAddr] = value;
                 break;
             case 0x2001: // Mask
                 /**
