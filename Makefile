@@ -7,6 +7,7 @@ all: src/M6502/m6502.hpp nestest test/results
 exec-test:
 	./nestest $(RP)/$(RF).nes $(FR) $(BR) test/results/$(RF).bmp > result_$(RF).log
 	sips -s format png test/results/$(RF).bmp -o test/results/$(RF).png
+	rm result_$(RF).log
 
 src/M6502/m6502.hpp:
 	git submodule init
