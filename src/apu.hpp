@@ -8,7 +8,7 @@ class APU
   public:
     unsigned char inPort(unsigned short addr)
     {
-        fprintf(stdout, "APU read from $%04X", addr); // 暫定処理（後で消す）
+        fprintf(stdout, "APU read from $%04X\n", addr); // 暫定処理（後で消す）
         return 0;
     }
     void outPort(unsigned short addr, unsigned char value)

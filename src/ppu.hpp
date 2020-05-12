@@ -67,6 +67,12 @@ class PPU
         this->dipswMirroring = rom->mirroring;
         _updateWorkAreaCtrl();
         frameCycleClock = isNTSC ? 89342 : 105710;
+        if (0x1000 <= rom->chrSize) {
+            memcpy(M.pattern[0], &rom->chrData[0x0000], 0x1000);
+        }
+        if (0x2000 <= rom->chrSize) {
+            memcpy(M.pattern[1], &rom->chrData[0x1000], 0x1000);
+        }
     }
 
     inline unsigned char inPort(unsigned short addr)
