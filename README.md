@@ -8,6 +8,8 @@ Currently testing with test program that published in the [NesDev Wiki](https://
 - [x] [branch_timing_tests: 2.Backward_Branch](test/results/2.Backward_Branch.png)
 - [x] [branch_timing_tests: 3.Forward_Branch](test/results/3.Forward_Branch.png)
 - [x] [cpu_dummy_reads](test/results/cpu_dummy_reads.png)
+- [ ] cpu_dummy_writes_oam
+- [ ] cpu_dummy_writes_ppumem
 
 ## License
 
