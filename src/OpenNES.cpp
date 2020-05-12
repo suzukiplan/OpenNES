@@ -23,17 +23,8 @@ static unsigned char ppuRead(void* arg, unsigned short addr) { return ((OpenNES*
 static void ppuWrite(void* arg, unsigned short addr, unsigned char value) { ((OpenNES*)arg)->ppu->outPort(addr, value); }
 static unsigned char apuRead(void* arg, unsigned short addr) { return ((OpenNES*)arg)->apu->inPort(addr); }
 static void apuWrite(void* arg, unsigned short addr, unsigned char value) { ((OpenNES*)arg)->apu->outPort(addr, value); }
-static unsigned char readMemory(void* arg, unsigned short addr)
-{
-    unsigned char c = ((OpenNES*)arg)->mmu->readMemory(addr);
-    printf("readMemory: $%04X: $%02X\n", addr, c);
-    return c;
-}
-static void writeMemory(void* arg, unsigned short addr, unsigned char value)
-{
-    printf("writeMemory: $%04X: $%02X\n", addr, value);
-    ((OpenNES*)arg)->mmu->writeMemory(addr, value);
-}
+static unsigned char readMemory(void* arg, unsigned short addr) { return ((OpenNES*)arg)->mmu->readMemory(addr); }
+static void writeMemory(void* arg, unsigned short addr, unsigned char value) { ((OpenNES*)arg)->mmu->writeMemory(addr, value); }
 
 OpenNES::OpenNES(bool isNTSC, ColorMode colorMode)
 {
