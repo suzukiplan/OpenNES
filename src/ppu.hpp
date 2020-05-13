@@ -1,4 +1,9 @@
 // SUZUKI PLAN - OpenNES (GPLv3)
+/**
+ * [TODO]
+ * - draw sprite
+ * - hit sprite 0
+ */
 #ifndef INCLUDE_PPU_HPP
 #define INCLUDE_PPU_HPP
 #include "OpenNES.h"
@@ -80,7 +85,6 @@ class PPU
 
     inline unsigned char inPort(unsigned short addr)
     {
-        fprintf(stdout, "PPU read from $%04X (PPU clock: %dHz - line:%d)\n", addr, R.clock, R.line); // 暫定処理（後で消す）
         switch (addr) {
             /**
              * 7  bit  0
@@ -118,7 +122,6 @@ class PPU
 
     inline void outPort(unsigned short addr, unsigned char value)
     {
-        fprintf(stdout, "PPU write $%02X to $%04X (PPU clock: %dHz - line:%d)\n", value, addr, R.clock, R.line); // 暫定処理（後で消す）
         switch (addr) {
             case 0x2000: // Controller
                 R.ctrl = value;
@@ -223,14 +226,23 @@ class PPU
         int namePtr = x / 8;
         namePtr += y / 8 * 32;
         int pattern = M.nameBuffer[M.name[nameIndex]][namePtr] * 16;
+        int attrPtr = x / 16;
+        attrPtr += y / 16 * 16;
+        attrPtr += 960;
+        unsigned char attr = M.nameBuffer[M.name[nameIndex]][attrPtr];
+        unsigned char attrBit = 0b11000000;
+        int attrShift = 0;
+        if ((x / 8) & 1) attrShift = 2;
+        if ((y / 8) & 1) attrShift += 4;
+        attr &= attrBit >> attrShift;
+        attr >>= attrShift;
         x &= 0b0111;
         int bit = 0b10000000 >> x;
         y &= 0b0111;
         unsigned char colorU = M.pattern[W.ctrl.bgPatternIndex][pattern + y] & bit ? 0x02 : 0x00;
         unsigned char colorL = M.pattern[W.ctrl.bgPatternIndex][pattern + 8 + y] & bit ? 0x01 : 0x00;
         unsigned char color = colorU | colorL;
-        // TODO: acquire 2bit palette index from attribute area (temporarily always use BG palette 0)
-        return color ? M.palette[0][color] : 0x80;
+        return color ? M.palette[attr][color] : 0x80;
     }
 
     inline void _updateWorkAreaCtrl()
