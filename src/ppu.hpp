@@ -218,9 +218,7 @@ class PPU
     {
         x += R.scroll[0];
         y += R.scroll[1];
-        int nameIndex = 0;
-        if (255 < x) nameIndex += 1;
-        if (255 < y) nameIndex += 2;
+        int nameIndex = (x / 256) + (y / 256 * 2);
         x &= 0xFF;
         y &= 0xFF;
         int namePtr = x / 8;
@@ -231,9 +229,7 @@ class PPU
         attrPtr += 960;
         unsigned char attr = M.nameBuffer[M.name[nameIndex]][attrPtr];
         unsigned char attrBit = 0b11000000;
-        int attrShift = 0;
-        if ((x / 8) & 1) attrShift = 2;
-        if ((y / 8) & 1) attrShift += 4;
+        int attrShift = ((x / 8) & 1) * 2 + ((y / 8) & 1) * 4;
         attr &= attrBit >> attrShift;
         attr >>= attrShift;
         x &= 0b0111;
