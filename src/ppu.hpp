@@ -71,7 +71,7 @@ class PPU
         memset(&M, 0, sizeof(M));
         this->dipswIgnoreMirroring = rom->ignoreMirroring;
         this->dipswMirroring = rom->mirroring;
-        _updateWorkAreaCtrl();
+        _updateWorkAreaCtrl(0);
         frameCycleClock = isNTSC ? 89342 : 105710;
         if (0x1000 <= rom->chrSize) {
             memcpy(M.pattern[0], &rom->chrData[0x0000], 0x1000);
@@ -86,36 +86,25 @@ class PPU
     inline unsigned char inPort(unsigned short addr)
     {
         switch (addr) {
-            /**
-             * 7  bit  0
-             * ---- ----
-             * VSO. ....
-             * |||| ||||
-             * |||+-++++- Least significant bits previously written into a PPU register
-             * |||        (due to register not being updated for this address)
-             * ||+------- Sprite overflow. The intent was for this flag to be set
-             * ||         whenever more than eight sprites appear on a scanline, but a
-             * ||         hardware bug causes the actual behavior to be more complicated
-             * ||         and generate false positives as well as false negatives; see
-             * ||         PPU sprite evaluation. This flag is set during sprite
-             * ||         evaluation and cleared at dot 1 (the second dot) of the
-             * ||         pre-render line.
-             * |+-------- Sprite 0 Hit.  Set when a nonzero pixel of sprite 0 overlaps
-             * |          a nonzero background pixel; cleared at dot 1 of the pre-render
-             * |          line.  Used for raster timing.
-             * +--------- Vertical blank has started (0: not in vblank; 1: in vblank).
-             *            Set at dot 1 of line 241 (the line *after* the post-render
-             *            line); cleared after reading $2002 and at dot 1 of the
-             *            pre-ren der line.
-             */
             case 0x2002: {
                 R.internalFlag = 0;
                 unsigned char result = R.status;
                 R.status &= 0b01111111;
                 return result;
             }
-            case 0x2004:
-                return M.oam[R.oamAddr];
+            case 0x2004: return M.oam[R.oamAddr];
+            case 0x2007:
+                unsigned char result = 0;
+                if (R.vramAddr < 0x2000) {
+                    result = M.pattern[R.vramAddr / 0x1000][R.vramAddr & 0xFFF];
+                } else if (R.vramAddr < 0x3F00) {
+                    result = M.nameBuffer[(R.vramAddr & 0xFFF) / 0x400][R.vramAddr & 0x3FF];
+                } else if (R.vramAddr < 0x4000) {
+                    result = M.palette[(R.vramAddr & 0x1F) / 4][R.vramAddr & 0x3];
+                }
+                R.vramAddr += W.ctrl.vramIncrement;
+                R.vramAddr &= 0x3FFF;
+                return result;
         }
         return 0;
     }
@@ -123,31 +112,10 @@ class PPU
     inline void outPort(unsigned short addr, unsigned char value)
     {
         switch (addr) {
-            case 0x2000: // Controller
-                R.ctrl = value;
-                _updateWorkAreaCtrl();
-                break;
-            case 0x2001: // Mask
-                /**
-                 * BGRs bMmG
-                 * |||| ||||
-                 * |||| |||+- Greyscale (0: normal color, 1: produce a greyscale display)
-                 * |||| ||+-- 1: Show background in leftmost 8 pixels of screen, 0: Hide
-                 * |||| |+--- 1: Show sprites in leftmost 8 pixels of screen, 0: Hide
-                 * |||| +---- 1: Show background
-                 * |||+------ 1: Show sprites
-                 * ||+------- Emphasize red
-                 * |+-------- Emphasize green
-                 * +--------- Emphasize blue
-                 */
-                R.mask = value;
-                break;
-            case 0x2003:
-                R.oamAddr = value;
-                break;
-            case 0x2004:
-                M.oam[R.oamAddr] = value;
-                break;
+            case 0x2000: _updateWorkAreaCtrl(value); break;
+            case 0x2001: R.mask = value; break;
+            case 0x2003: R.oamAddr = value; break;
+            case 0x2004: M.oam[R.oamAddr] = value; break;
             case 0x2005: // Scroll
                 R.scroll[R.internalFlag & 1] = value;
                 R.internalFlag ^= 0b00000001;
@@ -241,19 +209,9 @@ class PPU
         return color ? M.palette[attr][color] : 0x80;
     }
 
-    inline void _updateWorkAreaCtrl()
+    inline void _updateWorkAreaCtrl(unsigned char value)
     {
-        /**
-         * VPHB SINN
-         * |||| ||||
-         * |||| ||++- Base nametable address (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
-         * |||| |+--- VRAM address increment per CPU read/write of PPUDATA (0: add 1, going across; 1: add 32, going down)
-         * |||| +---- Sprite pattern table address for 8x8 sprites (0: $0000; 1: $1000; ignored in 8x16 mode)
-         * |||+------ Background pattern table address (0: $0000; 1: $1000)
-         * ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels)
-         * |+-------- PPU master/slave select (0: read backdrop from EXT pins; 1: output color on EXT pins)
-         * +--------- Generate an NMI at the start of the vertical blanking interval (0: off; 1: on)
-         */
+        R.ctrl = value;
         W.ctrl.baseNameTableIndex = R.ctrl & 0b00000011;
         W.ctrl.vramIncrement = R.ctrl & 0b00000100 ? 32 : 1;
         W.ctrl.spritePatternIndex = R.ctrl & 0b00001000 ? 1 : 0;
