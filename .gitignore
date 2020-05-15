@@ -2,3 +2,5 @@
 OpenNES.o
 nestest
 result_*
+*.bmp
+
