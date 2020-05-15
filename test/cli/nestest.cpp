@@ -82,13 +82,15 @@ int main(int argc, char* argv[])
     }
     nes.reset();
     unsigned short breakAddr = hex2i(argv[3]);
-    printf("break address: $%04X\n", breakAddr);
-    nes.cpu->addBreakPoint(breakAddr, [](void* arg) {
-        OpenNES* nes = (OpenNES*)arg;
-        printf("DETECT BREAK: $%04X\n", nes->cpu->R.pc);
-        displayToBitmap(nes->display);
-        exit(0);
-    });
+    if (breakAddr) {
+        printf("break address: $%04X\n", breakAddr);
+        nes.cpu->addBreakPoint(breakAddr, [](void* arg) {
+            OpenNES* nes = (OpenNES*)arg;
+            printf("DETECT BREAK: $%04X\n", nes->cpu->R.pc);
+            displayToBitmap(nes->display);
+            exit(0);
+        });
+    }
     for (int i = 0; i < atoi(argv[2]); i++) {
         nes.tick(0, 0);
     }
