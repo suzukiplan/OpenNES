@@ -95,7 +95,7 @@ class MMU
         if (addr < 0x4020) return apuRead(arg, addr);                                                     // APU I/O
         if (page < 0x60) return M.exRam[addr - 0x4000];                                                   // ExRAM
         if (romData.hasTrainer && 0x7000 <= addr && addr < 0x7200) return romData.trainer[addr - 0x7000]; // Trainer
-        if (page < 0x80) return romData.hasButtryBackup ? M.sram[addr - 0x6000] : 0;                      // SRAM (Battery backup)
+        if (page < 0x80) return M.sram[addr - 0x6000];                                                    // SRAM (Battery backup)
         // Read from ROM
         unsigned int ptr = R.bank[(addr & 0b0110000000000000) >> 13];
         ptr *= 0x2000;
@@ -116,7 +116,7 @@ class MMU
             apuWrite(arg, addr, value);
         } else if (page < 0x60) {
             M.exRam[addr - 0x4000] = value;
-        } else if (romData.hasButtryBackup && page < 0x80) {
+        } else if (page < 0x80) {
             M.sram[addr - 0x6000] = value;
         } else {
             // Write to ROM area
@@ -191,6 +191,13 @@ class MMU
         return 0 != memcmp(M.exRam, buf, 0x2000);
     }
 
+    bool isUsingSRam()
+    {
+        char buf[0x2000];
+        memset(buf, 0, sizeof(buf));
+        return 0 != memcmp(M.sram, buf, 0x2000);
+    }
+
     size_t getStateSize()
     {
         size_t size = 4;
@@ -202,7 +209,7 @@ class MMU
             size += 3;
             size += sizeof(M.exRam);
         }
-        if (romData.hasButtryBackup) {
+        if (isUsingSRam()) {
             size += 3;
             size += sizeof(M.sram);
         }
@@ -242,7 +249,7 @@ class MMU
             ptr += ds;
         }
 
-        if (romData.hasButtryBackup) {
+        if (isUsingSRam()) {
             ds = (unsigned short)sizeof(M.sram);
             cp[ptr++] = 'S';
             cp[ptr++] = (ds & 0xFF00) >> 8;
