@@ -1,5 +1,5 @@
 all: build
-	make exec-test-wip RP=test/rom/cpu_dummy_writes RF=cpu_dummy_writes_oam FR=60 BR=0
+	make exec-test-wip RP=test/rom/cpu_dummy_writes RF=cpu_dummy_writes_oam FR=1000 BR=E815
 
 test: build 
 	make exec-test RP=test/rom/branch_timing_tests RF=1.Branch_Basics FR=60 BR=E4F0
